@@ -4,9 +4,9 @@ import (
 	"time"
 	"context"
 	"sync"
-	"fmt"
 	"net/http"
 	"golang.org/x/net/context/ctxhttp"
+	"io/ioutil"
 )
 
 type Goab struct {
@@ -18,6 +18,8 @@ type Goab struct {
 	CancelFunc  context.CancelFunc
 	deadContext context.Context
 	waitSync    sync.WaitGroup
+	Counter     *SafeCounter
+	Process     *process
 	//seedRequest chan *http.Request
 	//feedbackResp chan *http.Response
 }
@@ -30,6 +32,8 @@ func New(url string, headers []string, method string, concurrency int, secondLim
 		method:      method,
 		concurrency: concurrency,
 		secondLimit: secondLimit,
+		Counter:     NewCounter(),
+		Process:     NewProcess(),
 		//feedbackResp: make(chan *http.Response),
 	}
 }
@@ -59,25 +63,43 @@ Quit:
 	for {
 		select {
 		case <-t.deadContext.Done():
-			fmt.Println("dead...")
+			//fmt.Println("dead...")
 			break Quit
 		default:
-			request,err:=http.NewRequest(t.method,t.url,nil)
+			startTime := time.Now()
+			request, err := http.NewRequest(t.method, t.url, nil)
 			if err != nil {
 				panic(err)
 			}
 
-			resp,err := ctxhttp.Do(t.deadContext, http.DefaultClient, request)
+			t.Counter.Inc("Send")
+			resp, err := ctxhttp.Do(t.deadContext, http.DefaultClient, request)
 			if err != nil {
 				if err == context.DeadlineExceeded {
-
-				}else {
-					fmt.Println(request.Context().Err())
-					fmt.Println(err)
+					// this context err
+					t.Counter.Inc("Deadline")
+					break
+				} else {
+					// not context err
 					panic(err)
 				}
-			}else {
-				fmt.Println(resp.Status)
+			} else {
+
+				if resp.StatusCode == 200 {
+					t.Counter.Inc("200")
+				} else {
+					t.Counter.Inc("not 200")
+				}
+
+				_, err := ioutil.ReadAll(resp.Body)
+				processTime := time.Now().Sub(startTime)
+				t.Process.Add(processTime)
+				if err != nil {
+					t.Counter.Inc("ReadFail")
+				} else {
+					t.Counter.Inc("ReadDone")
+				}
+				resp.Body.Close()
 			}
 			//t.feedbackResp <- resp
 		}
