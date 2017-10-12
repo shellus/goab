@@ -8,28 +8,27 @@ import (
 	"golang.org/x/net/context/ctxhttp"
 	"io/ioutil"
 )
-
+type RequestBuilder interface {
+	buildRequest()(*http.Request,error)
+}
 type Goab struct {
-	url         string
-	headers     []string
-	method      string
 	concurrency int
 	secondLimit uint
 	CancelFunc  context.CancelFunc
 	deadContext context.Context
 	waitSync    sync.WaitGroup
+	requestBuilder RequestBuilder
 	Counter     *SafeCounter
 	Process     *process
+
 	//seedRequest chan *http.Request
 	//feedbackResp chan *http.Response
 }
 
-func New(url string, headers []string, method string, concurrency int, secondLimit uint) *Goab {
+func New(requestBuilder RequestBuilder, concurrency int, secondLimit uint) *Goab {
 
 	return &Goab{
-		url:         url,
-		headers:     headers,
-		method:      method,
+		requestBuilder: requestBuilder,
 		concurrency: concurrency,
 		secondLimit: secondLimit,
 		Counter:     NewCounter(),
@@ -67,11 +66,10 @@ Quit:
 			break Quit
 		default:
 			startTime := time.Now()
-			request, err := http.NewRequest(t.method, t.url, nil)
+			request, err := t.requestBuilder.buildRequest()
 			if err != nil {
 				panic(err)
 			}
-
 			t.Counter.Inc("Send")
 			resp, err := ctxhttp.Do(t.deadContext, http.DefaultClient, request)
 			if err != nil {

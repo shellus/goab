@@ -50,11 +50,14 @@ func main() {
 		fmt.Printf("args %s\n", c.Args().Get(0))
 
 		headers := c.StringSlice("H")
-		ab = goab.New(c.Args().Get(0), headers, c.String("m"), c.Int("c"), c.Uint("t"))
+
+		requestBuilder := goab.NewSingleRequestBuilder(c.Args().Get(0), headers, c.String("m"))
+		ab = goab.New(requestBuilder, c.Int("c"), c.Uint("t"))
 		ab.Run()
 		ab.Wait()
 		fmt.Println(ab.Counter.Dump())
 
+		fmt.Println("Percentage of the requests served within a certain time")
 		for i, process := range ab.Process.Dump() {
 			fmt.Printf("% 3d%%\t\t%s\n", (i+1)*10, process.String())
 		}
